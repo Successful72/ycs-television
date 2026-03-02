@@ -13,19 +13,25 @@ SRC_LINK_50   : Up to 50 source URLs
 Rules
 -----
 - Numbering gaps are allowed; all 50 slots are scanned independently.
+- Redirects (301/302/…) are followed automatically.
 - Saved as  ./sources/src-N.<ext>  where ext is m3u or txt.
 - Responses with no valid feed signature are silently skipped.
 """
 
 import os
-import subprocess
 import sys
+
+try:
+    import requests
+except ImportError:
+    print("[fatal] 'requests' is not installed. Run: pip install requests")
+    sys.exit(1)
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 OUTPUT_DIR   = "./sources"
 MAX_INDEX    = 50
-CURL_TIMEOUT = 30   # seconds per request
+TIMEOUT      = 30   # seconds
 
 # Signatures that confirm the response is a valid feed
 M3U_MARKERS = ["#EXTM3U"]
@@ -43,38 +49,39 @@ def detect_format(content: str) -> str | None:
     return None
 
 
-def fetch(url: str, ua: str) -> str | None:
+def fetch(url: str, ua: str) -> tuple[str | None, str]:
     """
-    Download *url* via curl and return the response body.
-    Returns None on any error (network, timeout, non-2xx, etc.).
+    Download *url* via requests and return (body, reason).
+    Body is None on any error; reason is a short diagnostic string.
+    Redirects are followed automatically.
     """
-    cmd = [
-        "curl",
-        "--silent",
-        "--fail",          # treat HTTP 4xx/5xx as errors
-        "--max-time", str(CURL_TIMEOUT),
-        "--user-agent", ua,
-        url,
-    ]
+    headers = {"User-Agent": ua}
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=CURL_TIMEOUT + 5,
+        resp = requests.get(
+            url,
+            headers=headers,
+            timeout=TIMEOUT,
+            allow_redirects=True,   # follow 301/302/… automatically
         )
-        if result.returncode != 0:
-            err = result.stderr.strip()[:120]
-            print(f"    [curl] exit={result.returncode}  {err}")
-            return None
-        return result.stdout
 
-    except subprocess.TimeoutExpired:
-        print("    [timeout] request exceeded time limit")
-        return None
-    except FileNotFoundError:
-        print("[fatal] curl is not installed or not in PATH")
-        sys.exit(1)
+        # Surface the final URL after redirects for easier debugging
+        if resp.history:
+            hops = " → ".join(str(r.status_code) for r in resp.history)
+            print(f"    [redirect] {hops} → {resp.status_code}  final: {resp.url}")
+
+        if not resp.ok:
+            return None, f"HTTP {resp.status_code} {resp.reason}"
+
+        return resp.text, "ok"
+
+    except requests.exceptions.Timeout:
+        return None, "timeout"
+    except requests.exceptions.TooManyRedirects:
+        return None, "too many redirects"
+    except requests.exceptions.ConnectionError as e:
+        return None, f"connection error: {e}"
+    except requests.exceptions.RequestException as e:
+        return None, f"request error: {e}"
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -98,15 +105,14 @@ def main() -> None:
         url = os.environ.get(key, "").strip()
 
         if not url:
-            # Gap in numbering — skip this slot, keep scanning
-            continue
+            continue    # gap in numbering — skip, keep scanning
 
         print(f"[{idx:02d}] {key}")
 
-        content = fetch(url, ua)
+        content, reason = fetch(url, ua)
 
         if content is None:
-            print("    → skip  (fetch failed)\n")
+            print(f"    → skip  ({reason})\n")
             skipped += 1
             continue
 
