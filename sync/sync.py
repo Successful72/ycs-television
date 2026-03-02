@@ -13,25 +13,23 @@ SRC_LINK_50   : Up to 50 source URLs
 Rules
 -----
 - Numbering gaps are allowed; all 50 slots are scanned independently.
-- Redirects (301/302/…) are followed automatically.
+- Redirects (301/302/…) are followed automatically via curl -L.
+- curl sends ONLY the User-Agent header; no extra headers are injected,
+  so servers that fingerprint okhttp/etc. will not reject the request.
 - Saved as  ./sources/src-N.<ext>  where ext is m3u or txt.
 - Responses with no valid feed signature are silently skipped.
 """
 
 import os
+import subprocess
 import sys
-
-try:
-    import requests
-except ImportError:
-    print("[fatal] 'requests' is not installed. Run: pip install requests")
-    sys.exit(1)
+import tempfile
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-OUTPUT_DIR   = "./sources"
-MAX_INDEX    = 50
-TIMEOUT      = 30   # seconds
+OUTPUT_DIR = "./sources"
+MAX_INDEX  = 50
+TIMEOUT    = 30   # seconds per request
 
 # Signatures that confirm the response is a valid feed
 M3U_MARKERS = ["#EXTM3U"]
@@ -51,37 +49,67 @@ def detect_format(content: str) -> str | None:
 
 def fetch(url: str, ua: str) -> tuple[str | None, str]:
     """
-    Download *url* via requests and return (body, reason).
-    Body is None on any error; reason is a short diagnostic string.
-    Redirects are followed automatically.
+    Download *url* via curl and return (body, reason).
+
+    Key flags
+    ---------
+    --location   : follow 301/302/… redirects
+    --user-agent : set UA; curl adds NO other fingerprint headers
+    --output     : write body to a temp file (keeps stdout clean for --write-out)
+    --write-out  : capture status code, final URL, redirect count
     """
-    headers = {"User-Agent": ua}
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
+    os.close(tmp_fd)
+
+    cmd = [
+        "curl",
+        "--silent",
+        "--location",
+        "--max-time", str(TIMEOUT),
+        "--user-agent", ua,
+        "--output", tmp_path,
+        "--write-out", "%{http_code}\t%{url_effective}\t%{num_redirects}",
+        url,
+    ]
     try:
-        resp = requests.get(
-            url,
-            headers=headers,
-            timeout=TIMEOUT,
-            allow_redirects=True,   # follow 301/302/… automatically
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=TIMEOUT + 5,
         )
 
-        # Surface the final URL after redirects for easier debugging
-        if resp.history:
-            hops = " → ".join(str(r.status_code) for r in resp.history)
-            print(f"    [redirect] {hops} → {resp.status_code}  final: {resp.url}")
+        wout = result.stdout.strip().split("\t")
+        http_code    = int(wout[0]) if wout and wout[0].isdigit() else 0
+        final_url    = wout[1] if len(wout) > 1 else url
+        num_redirect = wout[2] if len(wout) > 2 else "0"
 
-        if not resp.ok:
-            return None, f"HTTP {resp.status_code} {resp.reason}"
+        if num_redirect not in ("0", ""):
+            print(f"    [redirect] x{num_redirect} -> HTTP {http_code}  {final_url}")
 
-        return resp.text, "ok"
+        if result.returncode != 0:
+            err = result.stderr.strip()[:120]
+            return None, f"curl exit={result.returncode}  {err}"
 
-    except requests.exceptions.Timeout:
+        if http_code == 0:
+            return None, "no response"
+        if not (200 <= http_code < 300):
+            return None, f"HTTP {http_code}"
+
+        with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
+            body = f.read()
+        return body, "ok"
+
+    except subprocess.TimeoutExpired:
         return None, "timeout"
-    except requests.exceptions.TooManyRedirects:
-        return None, "too many redirects"
-    except requests.exceptions.ConnectionError as e:
-        return None, f"connection error: {e}"
-    except requests.exceptions.RequestException as e:
-        return None, f"request error: {e}"
+    except FileNotFoundError:
+        print("[fatal] curl is not installed or not in PATH")
+        sys.exit(1)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -94,7 +122,7 @@ def main() -> None:
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     print(f"Output : {os.path.abspath(OUTPUT_DIR)}")
-    print(f"UA     : {ua[:72]}{'…' if len(ua) > 72 else ''}")
+    print(f"UA     : {ua[:72]}{'...' if len(ua) > 72 else ''}")
     print()
 
     saved   = 0
@@ -105,26 +133,26 @@ def main() -> None:
         url = os.environ.get(key, "").strip()
 
         if not url:
-            continue    # gap in numbering — skip, keep scanning
+            continue
 
         print(f"[{idx:02d}] {key}")
 
         content, reason = fetch(url, ua)
 
         if content is None:
-            print(f"    → skip  ({reason})\n")
+            print(f"    -> skip  ({reason})\n")
             skipped += 1
             continue
 
         if not content.strip():
-            print("    → skip  (empty response)\n")
+            print("    -> skip  (empty response)\n")
             skipped += 1
             continue
 
         fmt = detect_format(content)
         if fmt is None:
             preview = content.strip()[:100].replace("\n", " ")
-            print(f"    → skip  (no feed signature)")
+            print(f"    -> skip  (no feed signature)")
             print(f"       preview: {preview}\n")
             skipped += 1
             continue
@@ -134,10 +162,10 @@ def main() -> None:
             fh.write(content)
 
         lines = content.count("\n")
-        print(f"    → saved  src-{idx}.{fmt}  ({lines} lines)\n")
+        print(f"    -> saved  src-{idx}.{fmt}  ({lines} lines)\n")
         saved += 1
 
-    print("─" * 48)
+    print("-" * 48)
     print(f"Saved: {saved}   Skipped: {skipped}")
 
 
