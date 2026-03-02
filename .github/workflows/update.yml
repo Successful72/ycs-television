@@ -17,7 +17,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-    
+          
+      - name: Debug 403 URLs
+        run: |
+          echo "=== Runner IP ==="
+          curl -s https://api.ipify.org
+          echo ""
+          echo "=== Verbose request ==="
+          curl -v -L -A "okhttp/3.12.13" "https://ds65.tv1288.xyz" 2>&1 | head -60
+          
       - name: Install dependencies
         run: pip install requests
 
