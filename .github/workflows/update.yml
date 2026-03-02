@@ -1,0 +1,94 @@
+name: Sync Sources
+
+on:
+  workflow_dispatch:          # 手动触发
+  # schedule:
+  #  - cron: "0 */6 * * *"    # 每 6 小时自动运行（按需修改或删除）
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run sync
+        env:
+          # ── User-Agent ─────────────────────────────────────────────
+          # Secrets → New secret
+          #   Name : SRC_UA
+          #   Value: 你的 User-Agent 字符串
+          SRC_UA: ${{ secrets.SRC_UA }}
+
+          # ── Source URLs ────────────────────────────────────────────
+          # Secrets → New secret，依次添加 SRC_LINK_1 … SRC_LINK_50
+          # 编号可以不连续，中间空缺会被自动跳过
+          SRC_LINK_1:  ${{ secrets.SRC_LINK_1  }}
+          SRC_LINK_2:  ${{ secrets.SRC_LINK_2  }}
+          SRC_LINK_3:  ${{ secrets.SRC_LINK_3  }}
+          SRC_LINK_4:  ${{ secrets.SRC_LINK_4  }}
+          SRC_LINK_5:  ${{ secrets.SRC_LINK_5  }}
+          SRC_LINK_6:  ${{ secrets.SRC_LINK_6  }}
+          SRC_LINK_7:  ${{ secrets.SRC_LINK_7  }}
+          SRC_LINK_8:  ${{ secrets.SRC_LINK_8  }}
+          SRC_LINK_9:  ${{ secrets.SRC_LINK_9  }}
+          SRC_LINK_10: ${{ secrets.SRC_LINK_10 }}
+          SRC_LINK_11: ${{ secrets.SRC_LINK_11 }}
+          SRC_LINK_12: ${{ secrets.SRC_LINK_12 }}
+          SRC_LINK_13: ${{ secrets.SRC_LINK_13 }}
+          SRC_LINK_14: ${{ secrets.SRC_LINK_14 }}
+          SRC_LINK_15: ${{ secrets.SRC_LINK_15 }}
+          SRC_LINK_16: ${{ secrets.SRC_LINK_16 }}
+          SRC_LINK_17: ${{ secrets.SRC_LINK_17 }}
+          SRC_LINK_18: ${{ secrets.SRC_LINK_18 }}
+          SRC_LINK_19: ${{ secrets.SRC_LINK_19 }}
+          SRC_LINK_20: ${{ secrets.SRC_LINK_20 }}
+          SRC_LINK_21: ${{ secrets.SRC_LINK_21 }}
+          SRC_LINK_22: ${{ secrets.SRC_LINK_22 }}
+          SRC_LINK_23: ${{ secrets.SRC_LINK_23 }}
+          SRC_LINK_24: ${{ secrets.SRC_LINK_24 }}
+          SRC_LINK_25: ${{ secrets.SRC_LINK_25 }}
+          SRC_LINK_26: ${{ secrets.SRC_LINK_26 }}
+          SRC_LINK_27: ${{ secrets.SRC_LINK_27 }}
+          SRC_LINK_28: ${{ secrets.SRC_LINK_28 }}
+          SRC_LINK_29: ${{ secrets.SRC_LINK_29 }}
+          SRC_LINK_30: ${{ secrets.SRC_LINK_30 }}
+          SRC_LINK_31: ${{ secrets.SRC_LINK_31 }}
+          SRC_LINK_32: ${{ secrets.SRC_LINK_32 }}
+          SRC_LINK_33: ${{ secrets.SRC_LINK_33 }}
+          SRC_LINK_34: ${{ secrets.SRC_LINK_34 }}
+          SRC_LINK_35: ${{ secrets.SRC_LINK_35 }}
+          SRC_LINK_36: ${{ secrets.SRC_LINK_36 }}
+          SRC_LINK_37: ${{ secrets.SRC_LINK_37 }}
+          SRC_LINK_38: ${{ secrets.SRC_LINK_38 }}
+          SRC_LINK_39: ${{ secrets.SRC_LINK_39 }}
+          SRC_LINK_40: ${{ secrets.SRC_LINK_40 }}
+          SRC_LINK_41: ${{ secrets.SRC_LINK_41 }}
+          SRC_LINK_42: ${{ secrets.SRC_LINK_42 }}
+          SRC_LINK_43: ${{ secrets.SRC_LINK_43 }}
+          SRC_LINK_44: ${{ secrets.SRC_LINK_44 }}
+          SRC_LINK_45: ${{ secrets.SRC_LINK_45 }}
+          SRC_LINK_46: ${{ secrets.SRC_LINK_46 }}
+          SRC_LINK_47: ${{ secrets.SRC_LINK_47 }}
+          SRC_LINK_48: ${{ secrets.SRC_LINK_48 }}
+          SRC_LINK_49: ${{ secrets.SRC_LINK_49 }}
+          SRC_LINK_50: ${{ secrets.SRC_LINK_50 }}
+
+        run: python /sync/sync.py
+
+      - name: List results
+        run: ls -lh ./sources/ 2>/dev/null || echo "(no files)"
+
+      # ── 可选：传递给后续 Job ──────────────────────────────────────
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: sources
+      #     path: ./sources/
+      #     retention-days: 1
