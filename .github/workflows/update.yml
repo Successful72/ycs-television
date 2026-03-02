@@ -80,7 +80,7 @@ jobs:
           SRC_LINK_49: ${{ secrets.SRC_LINK_49 }}
           SRC_LINK_50: ${{ secrets.SRC_LINK_50 }}
 
-        run: python /sync/sync.py
+        run: python sync/sync.py
 
       - name: List results
         run: ls -lh ./sources/ 2>/dev/null || echo "(no files)"
