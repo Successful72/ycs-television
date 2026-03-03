@@ -95,6 +95,18 @@ jobs:
       - name: Extract URLs-4
         run: python process/channel_province.py
 
+      - name: Extract URLs-5
+        run: python process/channel_province_ground.py
+
+      - name: Extract URLs-6
+        run: python process/channel_hk.py
+
+      - name: Extract URLs-7
+        run: python process/channel_mo.py
+
+      - name: Extract URLs-8
+        run: python process/channel_tw.py
+
       - name: List results-1
         run: ls -lh ./sources/temp 2>/dev/null || echo "(no files)"
 
