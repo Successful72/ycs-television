@@ -4,10 +4,10 @@ Source Sync  —  fetch remote subscription feeds and save locally.
 
 Environment variables (GitHub Secrets)
 ---------------------------------------
-SRC_UA             : User-Agent string (required)
-SRC_LINK_1 … 50   : Source URLs (gaps allowed)
-AUX_ENDPOINT       : Alternate endpoint URL (optional)
-AUX_KEY            : Access key for alternate endpoint (optional)
+SRC_UA          : User-Agent string (required)
+SRC_LINKS       : All source URLs, one per line (blank lines ignored)
+AUX_ENDPOINT    : Alternate endpoint URL (optional)
+AUX_KEY         : Access key for alternate endpoint (optional)
 """
 
 import json
@@ -15,12 +15,13 @@ import os
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timezone
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 OUTPUT_DIR = "./sources"
-MAX_INDEX  = 50
-TIMEOUT    = 30
+LOG_PATH   = "./logs/logs.txt"
+TIMEOUT    = 60   # seconds per request
 
 M3U_MARKERS = ["#EXTM3U"]
 TXT_MARKERS = ["#EXTINF", ",http://", ",https://", ",rtmp://", ",rtsp://"]
@@ -37,6 +38,7 @@ def detect_format(content: str) -> str | None:
 
 
 def direct_fetch(url: str, ua: str) -> tuple[str | None, int, str]:
+    """Direct curl download. Returns (body, http_code, reason)."""
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
     os.close(tmp_fd)
 
@@ -65,7 +67,7 @@ def direct_fetch(url: str, ua: str) -> tuple[str | None, int, str]:
 
         if result.returncode != 0:
             err = result.stderr.strip()[:120]
-            return None, 0, f"curl exit={result.returncode}  {err}"
+            return None, http_code, f"curl exit={result.returncode}  {err}"
         if http_code == 0:
             return None, 0, "no response"
         if not (200 <= http_code < 300):
@@ -88,6 +90,7 @@ def direct_fetch(url: str, ua: str) -> tuple[str | None, int, str]:
 
 
 def aux_fetch(url: str, ua: str, endpoint: str, key: str) -> tuple[str | None, str]:
+    """Fetch via alternate endpoint. Returns (body, reason)."""
     payload = json.dumps({"url": url, "ua": ua})
 
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
@@ -140,15 +143,41 @@ def aux_fetch(url: str, ua: str, endpoint: str, key: str) -> tuple[str | None, s
             pass
 
 
+def write_log(failed: list[int]) -> None:
+    """Write failed link numbers to log file, overwriting any previous log."""
+    if not failed:
+        # No failures — remove stale log if it exists
+        try:
+            os.remove(LOG_PATH)
+        except OSError:
+            pass
+        return
+
+    os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    with open(LOG_PATH, "w", encoding="utf-8") as f:
+        f.write(f"# {ts}\n")
+        for idx in failed:
+            f.write(f"{idx}号链接获取不到有效文件，可能已失效。\n")
+    print(f"\nLog written -> {LOG_PATH}  ({len(failed)} item(s))")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     ua       = os.environ.get("SRC_UA", "").strip()
     aux_url  = os.environ.get("AUX_ENDPOINT", "").strip()
     aux_key  = os.environ.get("AUX_KEY", "").strip()
+    src_raw  = os.environ.get("SRC_LINKS", "")
 
     if not ua:
         print("[fatal] SRC_UA is not set.")
+        sys.exit(1)
+
+    # Parse URLs: one per line, skip blanks
+    urls = [line.strip() for line in src_raw.splitlines() if line.strip()]
+    if not urls:
+        print("[fatal] SRC_LINKS is empty or not set.")
         sys.exit(1)
 
     use_aux = bool(aux_url and aux_key)
@@ -157,23 +186,21 @@ def main() -> None:
     print(f"Output : {os.path.abspath(OUTPUT_DIR)}")
     print(f"UA     : {ua[:72]}{'...' if len(ua) > 72 else ''}")
     print(f"Aux    : {'enabled' if use_aux else 'disabled'}")
+    print(f"Total  : {len(urls)} link(s)")
     print()
 
     saved   = 0
     skipped = 0
+    failed  = []   # indices of links that could not be saved
 
-    for idx in range(1, MAX_INDEX + 1):
-        key = f"SRC_LINK_{idx}"
-        url = os.environ.get(key, "").strip()
+    for idx, url in enumerate(urls, start=1):
+        print(f"[{idx:02d}] link {idx}")
 
-        if not url:
-            continue
-
-        print(f"[{idx:02d}] {key}")
-
+        # ── Step 1: direct ────────────────────────────────────────────────
         content, http_code, reason = direct_fetch(url, ua)
 
-        if content is None and http_code == 403 and use_aux:
+        # ── Step 2: any failure → try alternate route ─────────────────────
+        if content is None and use_aux:
             print(f"    [direct] {reason} — trying alternate route...")
             content, reason = aux_fetch(url, ua, aux_url, aux_key)
             if content is not None:
@@ -181,14 +208,17 @@ def main() -> None:
             else:
                 print(f"    [alt] {reason}")
 
+        # ── Step 3: evaluate ──────────────────────────────────────────────
         if content is None:
             print(f"    -> skip  ({reason})\n")
             skipped += 1
+            failed.append(idx)
             continue
 
         if not content.strip():
             print("    -> skip  (empty response)\n")
             skipped += 1
+            failed.append(idx)
             continue
 
         fmt = detect_format(content)
@@ -197,6 +227,7 @@ def main() -> None:
             print(f"    -> skip  (no feed signature)")
             print(f"       preview: {preview}\n")
             skipped += 1
+            failed.append(idx)
             continue
 
         out_path = os.path.join(OUTPUT_DIR, f"src-{idx}.{fmt}")
@@ -209,6 +240,8 @@ def main() -> None:
 
     print("-" * 48)
     print(f"Saved: {saved}   Skipped: {skipped}")
+
+    write_log(failed)
 
 
 if __name__ == "__main__":
