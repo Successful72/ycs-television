@@ -25,10 +25,6 @@ jobs:
           #   Name : SRC_UA
           #   Value: 你的 User-Agent 字符串
           SRC_UA: ${{ secrets.SRC_UA }}
-
-          # 25002500 Cloudflare Worker 4ee37406Ff0853ef9009Ff0c75284e8e7ed58fc7 CF IP 5c019501Ff09250025002500250025002500250025002500250025002500250025002500
-          # 59824e0d9700898153ef75597a7aFf0c811a672c4f1a81ea52a88df38fc7 Worker 903b8f91
-          # ── Alternate route (optional) ──────────────────────────────────
           AUX_ENDPOINT: ${{ secrets.AUX_ENDPOINT }}
           AUX_KEY:      ${{ secrets.AUX_KEY }}
 
