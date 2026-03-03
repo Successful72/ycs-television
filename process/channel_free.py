@@ -123,11 +123,10 @@ def main():
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "央视公共频道.m3u")
 
-    # 收集所有 m3u/txt 文件
     patterns = [
-        os.path.join(input_dir, "iptv*.m3u"),
-        os.path.join(input_dir, "iptv*.m3u8"),
-        os.path.join(input_dir, "iptv*.txt"),
+        os.path.join(input_dir, "src-*.m3u"),
+        os.path.join(input_dir, "src-*.m3u8"),
+        os.path.join(input_dir, "src-*.txt"),
     ]
     files = []
     for p in patterns:
