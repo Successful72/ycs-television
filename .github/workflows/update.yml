@@ -29,7 +29,7 @@ jobs:
           SRC_LINKS:    ${{ secrets.SRC_LINKS }}
           AUX_ENDPOINT: ${{ secrets.AUX_ENDPOINT }}
           AUX_KEY:      ${{ secrets.AUX_KEY }}
-        run: python sync.py
+        run: python sync/sync.py
 
       - name: List results
         run: ls -lh ./sources/ 2>/dev/null || echo "(no files)"
