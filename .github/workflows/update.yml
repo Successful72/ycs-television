@@ -19,7 +19,7 @@ jobs:
           python-version: "3.11"
 
       - name: Prepare Dependences
-        run: pip install request
+        run: pip install requests
 
       - name: Run sync
         env:
