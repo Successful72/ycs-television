@@ -92,6 +92,9 @@ jobs:
       - name: Extract URLs-3
         run: python process/channel_foreign.py
 
+      - name: Extract URLs-4
+        run: python process/channel_province.py
+
       - name: List results-1
         run: ls -lh ./sources/temp 2>/dev/null || echo "(no files)"
 
