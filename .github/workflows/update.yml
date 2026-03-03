@@ -132,9 +132,9 @@ jobs:
 
       # 使用App token 清理 Workflow Runs
       - name: Clean up old workflow records
-        run: python .github/scripts/CleanWorkflowRecords.py
+        run: python .github/scripts/clean.py
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           WORKFLOW_NAME: "Update Clash Proxies"
-          KEEP_COUNT: 3
+          KEEP_COUNT: 2
