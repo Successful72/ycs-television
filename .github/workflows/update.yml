@@ -86,6 +86,9 @@ jobs:
       - name: Extract URLs-1
         run: process/channel_free.py
 
+      - name: List results-1
+        run: ls -lh ./sources/temp 2>/dev/null || echo "(no files)"
+
       # ── 可选：传递给后续 Job ──────────────────────────────────────
       # - name: Upload artifact
       #   uses: actions/upload-artifact@v4
