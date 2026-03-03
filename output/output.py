@@ -1,49 +1,85 @@
+"""
+Upload M3U playlist to remote key-value storage.
+
+Required environment variables (configured in repository secrets):
+  REMOTE_HOST         - Remote service host
+  STORAGE_ACCOUNT_ID  - Account identifier
+  STORAGE_NS_ID       - Storage namespace identifier
+  STORAGE_API_TOKEN   - API access token (write permission)
+  STORAGE_KEY_NAME    - Key name for the playlist entry (e.g. "playlist")
+"""
+
 import os
+import sys
+import glob
 import requests
 
-# 从环境变量读取（GitHub Actions 自动提供）
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
-REPO = os.environ["GITHUB_REPOSITORY"]  # 格式：owner/repo
-TAG = os.environ.get("RELEASE_TAG", "latest")  # 可在 workflow 中自定义
+_STORAGE_ENDPOINT = (
+    "https://api.{host}/client/v4/accounts/{account_id}"
+    "/storage/kv/namespaces/{namespace_id}/values/{key}"
+)
 
-FILE_PATH = "./sources/output/我的电视节目.m3u"
-FILE_NAME = "我的电视节目.m3u"
 
-headers = {
-    "Authorization": f"token {GITHUB_TOKEN}",
-    "Accept": "application/vnd.github+json",
-}
-api_base = f"https://api.github.com/repos/{REPO}"
+def get_env(name: str) -> str:
+    value = os.environ.get(name)
+    if not value:
+        print(f"[ERROR] Environment variable '{name}' is not set or empty.")
+        sys.exit(1)
+    return value
 
-# 查找或创建 Release
-res = requests.get(f"{api_base}/releases/tags/{TAG}", headers=headers)
 
-if res.status_code == 200:
-    release = res.json()
-    print(f"找到已有 Release：{TAG}")
-else:
-    # 创建新 Release
-    payload = {"tag_name": TAG, "name": TAG, "draft": False, "prerelease": False}
-    res = requests.post(f"{api_base}/releases", json=payload, headers=headers)
-    res.raise_for_status()
-    release = res.json()
-    print(f"已创建新 Release：{TAG}")
+def find_m3u_file(directory: str) -> str:
+    for ext in ("*.m3u", "*.m3u8"):
+        files = glob.glob(os.path.join(directory, ext))
+        if files:
+            if len(files) > 1:
+                print(f"[WARNING] Multiple files found, using: {files[0]}")
+            return files[0]
+    print(f"[ERROR] No playlist file found in '{directory}'")
+    sys.exit(1)
 
-release_id = release["id"]
 
-# 删除同名旧文件（避免重复）
-for asset in release.get("assets", []):
-    if asset["name"] == FILE_NAME:
-        requests.delete(f"{api_base}/releases/assets/{asset['id']}", headers=headers)
-        print(f"已删除旧文件：{FILE_NAME}")
-
-# 上传新文件
-upload_url = f"https://uploads.github.com/repos/{REPO}/releases/{release_id}/assets?name={FILE_NAME}"
-with open(FILE_PATH, "rb") as f:
-    upload_res = requests.post(
-        upload_url,
-        headers={**headers, "Content-Type": "application/octet-stream"},
-        data=f,
+def push_content(host: str, account_id: str, namespace_id: str,
+                 api_token: str, key: str, content: str) -> None:
+    url = _STORAGE_ENDPOINT.format(
+        host=host,
+        account_id=account_id,
+        namespace_id=namespace_id,
+        key=key,
     )
-upload_res.raise_for_status()
-print(f"上传成功：{upload_res.json()['browser_download_url']}")
+    headers = {
+        "Authorization": f"Bearer {api_token}",
+        "Content-Type": "text/plain; charset=utf-8",
+    }
+
+    print(f"[INFO] Pushing playlist to remote storage, key='{key}' ...")
+    resp = requests.put(url, headers=headers, data=content.encode("utf-8"))
+
+    if resp.status_code == 200:
+        print("[SUCCESS] Playlist pushed to remote storage successfully.")
+    else:
+        print(f"[ERROR] Push failed. HTTP {resp.status_code}: {resp.text}")
+        sys.exit(1)
+
+
+def main():
+    source_dir = "./sources/output"
+
+    remote_host  = get_env("REMOTE_HOST")
+    account_id   = get_env("STORAGE_ACCOUNT_ID")
+    namespace_id = get_env("STORAGE_NS_ID")
+    api_token    = get_env("STORAGE_API_TOKEN")
+    key_name     = get_env("STORAGE_KEY_NAME")
+
+    m3u_path = find_m3u_file(source_dir)
+    print(f"[INFO] Found playlist file: {m3u_path}")
+
+    with open(m3u_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    print(f"[INFO] File size: {len(content.encode('utf-8'))} bytes")
+    push_content(remote_host, account_id, namespace_id, api_token, key_name, content)
+
+
+if __name__ == "__main__":
+    main()
