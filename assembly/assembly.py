@@ -2,7 +2,7 @@ import os
 import glob
 
 # 查找所有 m3u 文件，按创建时间排序
-m3u_files = glob.glob("./sources/*.m3u", recursive=True)
+m3u_files = glob.glob("./sources/temp/*.m3u", recursive=True)
 m3u_files.sort(key=lambda f: os.path.getctime(f))
 
 output_dir = "./sources/output"
