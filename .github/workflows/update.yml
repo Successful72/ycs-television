@@ -18,6 +18,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Prepare Dependences
+        run: pip install request
+
       - name: Run sync
         env:
           # ── User-Agent ─────────────────────────────────────────────
