@@ -6,7 +6,7 @@ on:
   #  - cron: "0 */6 * * *"    # 每 6 小时自动运行（按需修改或删除）
 
 jobs:
-  sync:
+  Sync:
     runs-on: ubuntu-latest
     permissions:
       contents: read   # ← 必须在 job 级别，不能漏
