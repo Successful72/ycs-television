@@ -24,10 +24,7 @@ jobs:
           curl -s https://api.ipify.org
           echo ""
           echo "=== Verbose request ==="
-          curl -v -L -A "okhttp/3.12.13" "https://ds65.tv1288.xyz" 2>&1 | head -40
-          
-      - name: Install dependencies
-        run: pip install requests
+          curl -v -L -A "okhttp/3.12.13" "https://ds65.tv1288.xyz" 2>&1 | head -100
 
       - name: Run sync
         env:
