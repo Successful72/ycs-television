@@ -9,7 +9,7 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # ← 必须在 job 级别，不能漏
+      contents: read   # ← 必须在 job 级别，不能漏
 
     steps:
       - name: Checkout
@@ -120,3 +120,21 @@ jobs:
           STORAGE_API_TOKEN:  ${{ secrets.STORAGE_API_TOKEN }}
           STORAGE_KEY_NAME:   ${{ secrets.STORAGE_KEY_NAME }}
         run: python output/output.py
+
+      # 清理Workflow Runs记录
+      # 生成GitHub App token
+      - name: Generate GitHub App token
+        id: app-token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      # 使用App token 清理 Workflow Runs
+      - name: Clean up old workflow records
+        run: python .github/scripts/CleanWorkflowRecords.py
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_NAME: "Update Clash Proxies"
+          KEEP_COUNT: 3
