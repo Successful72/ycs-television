@@ -21,15 +21,11 @@ jobs:
       - name: Run sync
         env:
           # ── User-Agent ─────────────────────────────────────────────
-          # Secrets → New secret
-          #   Name : SRC_UA
-          #   Value: 你的 User-Agent 字符串
           SRC_UA: ${{ secrets.SRC_UA }}
           AUX_ENDPOINT: ${{ secrets.AUX_ENDPOINT }}
           AUX_KEY:      ${{ secrets.AUX_KEY }}
 
           # ── Source URLs ────────────────────────────────────────────
-          # Secrets → New secret，依次添加 SRC_LINK_1 … SRC_LINK_50
           # 编号可以不连续，中间空缺会被自动跳过
           SRC_LINK_1:  ${{ secrets.SRC_LINK_1  }}
           SRC_LINK_2:  ${{ secrets.SRC_LINK_2  }}
