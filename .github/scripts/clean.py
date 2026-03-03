@@ -13,7 +13,7 @@ from datetime import datetime
 def clean_workflow_records():
     token = os.getenv("GITHUB_TOKEN")
     repo = os.getenv("GITHUB_REPOSITORY")
-    workflow_name = os.getenv("WORKFLOW_NAME", "Update Clash Proxies")
+    workflow_name = os.getenv("WORKFLOW_NAME", "Sync Sources")
     keep_count = int(os.getenv("KEEP_COUNT", 3))
     current_run_id = int(os.getenv("GITHUB_RUN_ID", "0"))
 
