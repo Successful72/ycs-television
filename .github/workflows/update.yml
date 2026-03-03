@@ -84,7 +84,7 @@ jobs:
         run: ls -lh ./sources/ 2>/dev/null || echo "(no files)"
 
       - name: Extract URLs-1
-        run: process/channel_free.py
+        run: python process/channel_free.py
 
       - name: List results-1
         run: ls -lh ./sources/temp 2>/dev/null || echo "(no files)"
