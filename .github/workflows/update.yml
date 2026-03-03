@@ -136,5 +136,5 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          WORKFLOW_NAME: "Update Clash Proxies"
+          WORKFLOW_NAME: "Sync Sources"
           KEEP_COUNT: 2
