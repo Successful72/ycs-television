@@ -1,9 +1,9 @@
 name: Sync Sources
 
 on:
-  workflow_dispatch:          # 手动触发
-  #schedule:
-  #  - cron: "0 */6 * * *"    # 每 6 小时自动运行（按需修改或删除）
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */4 * * *" 
 
 jobs:
   Sync:
@@ -67,8 +67,6 @@ jobs:
           STORAGE_KEY_NAME:   ${{ secrets.STORAGE_KEY_NAME }}
         run: python output/output.py
 
-      # 清理Workflow Runs记录
-      # 生成GitHub App token
       - name: Generate GitHub App token
         id: app-token
         uses: tibdex/github-app-token@v2
@@ -76,7 +74,6 @@ jobs:
           app_id: ${{ secrets.APP_ID }}
           private_key: ${{ secrets.APP_PRIVATE_KEY }}
 
-      # 使用App token 清理 Workflow Runs
       - name: Clean up old workflow records
         run: python .github/scripts/clean.py
         env:
