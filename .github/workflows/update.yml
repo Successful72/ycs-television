@@ -110,10 +110,11 @@ jobs:
       - name: List results-1
         run: ls -lh ./sources/temp 2>/dev/null || echo "(no files)"
 
-      # ── 可选：传递给后续 Job ──────────────────────────────────────
-      # - name: Upload artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: sources
-      #     path: ./sources/
-      #     retention-days: 1
+      - name: Assembly files
+        run: python assembly/assembly.py
+
+      - name: Upload to Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: "latest"
+        run: python /output/output.py
