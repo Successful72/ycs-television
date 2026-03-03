@@ -118,8 +118,14 @@ jobs:
       - name: Assembly files
         run: python assembly/assembly.py
 
-      - name: Upload to Release
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Sync playlist
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: "latest"
+          REMOTE_HOST:        ${{ secrets.REMOTE_HOST }}
+          STORAGE_ACCOUNT_ID: ${{ secrets.STORAGE_ACCOUNT_ID }}
+          STORAGE_NS_ID:      ${{ secrets.STORAGE_NS_ID }}
+          STORAGE_API_TOKEN:  ${{ secrets.STORAGE_API_TOKEN }}
+          STORAGE_KEY_NAME:   ${{ secrets.STORAGE_KEY_NAME }}
         run: python output/output.py
