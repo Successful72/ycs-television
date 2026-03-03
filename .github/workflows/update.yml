@@ -9,7 +9,7 @@ jobs:
   Sync:
     runs-on: ubuntu-latest
     permissions:
-      contents: read   # ← 必须在 job 级别，不能漏
+      contents: read
 
     steps:
       - name: Checkout
