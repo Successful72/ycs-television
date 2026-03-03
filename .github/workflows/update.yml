@@ -88,40 +88,31 @@ jobs:
       - name: List results
         run: ls -lh ./sources/ 2>/dev/null || echo "(no files)"
 
-      - name: Extract URLs-1
-        run: python process/channel_free.py
+      - name: Extract URLs
+        run: |
+          scripts=(
+            "channel_free.py"
+            "channel_pay.py" 
+            "channel_foreign.py"
+            "channel_province.py"
+            "channel_province_ground.py"
+            "channel_hk.py"
+            "channel_mo.py"
+            "channel_tw.py"
+          )
+    
+          for script in "${scripts[@]}"; do
+            echo "Running $script..."
+            python "process/$script"
+          done
 
-      - name: Extract URLs-2
-        run: python process/channel_pay.py
-
-      - name: Extract URLs-3
-        run: python process/channel_foreign.py
-
-      - name: Extract URLs-4
-        run: python process/channel_province.py
-
-      - name: Extract URLs-5
-        run: python process/channel_province_ground.py
-
-      - name: Extract URLs-6
-        run: python process/channel_hk.py
-
-      - name: Extract URLs-7
-        run: python process/channel_mo.py
-
-      - name: Extract URLs-8
-        run: python process/channel_tw.py
-
-      - name: List results-1
+      - name: List results(extracted)
         run: ls -lh ./sources/temp 2>/dev/null || echo "(no files)"
 
       - name: Assembly files
         run: python assembly/assembly.py
 
-      - name: Install dependencies
-        run: pip install requests
-
-      - name: Sync playlist
+      - name: Release files
         env:
           REMOTE_HOST:        ${{ secrets.REMOTE_HOST }}
           STORAGE_ACCOUNT_ID: ${{ secrets.STORAGE_ACCOUNT_ID }}
