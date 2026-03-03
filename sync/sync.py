@@ -2,24 +2,21 @@
 """
 Source Sync  —  fetch remote subscription feeds and save locally.
 
-Environment variables
----------------------
-SRC_UA        : User-Agent string (required)
-SRC_LINK_1    : First source URL
-SRC_LINK_2    : Second source URL
-…
-SRC_LINK_50   : Up to 50 source URLs
+Environment variables (GitHub Secrets)
+---------------------------------------
+SRC_UA            : User-Agent string (required)
+SRC_LINK_1 … 50  : Source URLs (gaps allowed)
+CF_WORKER_URL     : Cloudflare Worker URL, e.g. https://xxxx.workers.dev/fetch
+CF_WORKER_TOKEN   : Bearer token set in the Worker's environment variables
 
-Rules
------
-- Numbering gaps are allowed; all 50 slots are scanned independently.
-- Redirects (301/302/…) are followed automatically via curl -L.
-- curl sends ONLY the User-Agent header; no extra headers are injected,
-  so servers that fingerprint okhttp/etc. will not reject the request.
-- Saved as  ./sources/src-N.<ext>  where ext is m3u or txt.
-- Responses with no valid feed signature are silently skipped.
+Fetch strategy
+--------------
+1. Try direct curl (fast, works for most URLs)
+2. If HTTP 403 → retry via Cloudflare Worker (bypasses CF IP blocks)
+3. If Worker also fails → skip
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -31,7 +28,6 @@ OUTPUT_DIR = "./sources"
 MAX_INDEX  = 50
 TIMEOUT    = 30   # seconds per request
 
-# Signatures that confirm the response is a valid feed
 M3U_MARKERS = ["#EXTM3U"]
 TXT_MARKERS = ["#EXTINF", ",http://", ",https://", ",rtmp://", ",rtsp://"]
 
@@ -39,7 +35,6 @@ TXT_MARKERS = ["#EXTINF", ",http://", ",https://", ",rtmp://", ",rtsp://"]
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def detect_format(content: str) -> str | None:
-    """Return 'm3u', 'txt', or None if the content is not a valid feed."""
     if any(m in content for m in M3U_MARKERS):
         return "m3u"
     if any(m in content for m in TXT_MARKERS):
@@ -47,16 +42,11 @@ def detect_format(content: str) -> str | None:
     return None
 
 
-def fetch(url: str, ua: str) -> tuple[str | None, str]:
+def curl_fetch(url: str, ua: str) -> tuple[str | None, int, str]:
     """
-    Download *url* via curl and return (body, reason).
-
-    Key flags
-    ---------
-    --location   : follow 301/302/… redirects
-    --user-agent : set UA; curl adds NO other fingerprint headers
-    --output     : write body to a temp file (keeps stdout clean for --write-out)
-    --write-out  : capture status code, final URL, redirect count
+    Direct curl download.
+    Returns (body, http_code, reason).
+    body is None on failure.
     """
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
     os.close(tmp_fd)
@@ -73,10 +63,7 @@ def fetch(url: str, ua: str) -> tuple[str | None, str]:
     ]
     try:
         result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=TIMEOUT + 5,
+            cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
         )
 
         wout = result.stdout.strip().split("\t")
@@ -89,19 +76,78 @@ def fetch(url: str, ua: str) -> tuple[str | None, str]:
 
         if result.returncode != 0:
             err = result.stderr.strip()[:120]
-            return None, f"curl exit={result.returncode}  {err}"
+            return None, 0, f"curl exit={result.returncode}  {err}"
 
         if http_code == 0:
-            return None, "no response"
+            return None, 0, "no response"
+
         if not (200 <= http_code < 300):
-            return None, f"HTTP {http_code}"
+            return None, http_code, f"HTTP {http_code}"
 
         with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
             body = f.read()
-        return body, "ok"
+        return body, http_code, "ok"
 
     except subprocess.TimeoutExpired:
-        return None, "timeout"
+        return None, 0, "timeout"
+    except FileNotFoundError:
+        print("[fatal] curl is not installed or not in PATH")
+        sys.exit(1)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+def worker_fetch(url: str, ua: str, worker_url: str, token: str) -> tuple[str | None, str]:
+    """
+    Fetch via Cloudflare Worker proxy.
+    Returns (body, reason).
+    """
+    payload = json.dumps({"url": url, "ua": ua})
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
+    os.close(tmp_fd)
+
+    cmd = [
+        "curl",
+        "--silent",
+        "--location",
+        "--max-time", str(TIMEOUT),
+        "--request", "POST",
+        "--header", "Content-Type: application/json",
+        "--header", f"Authorization: Bearer {token}",
+        "--data", payload,
+        "--output", tmp_path,
+        "--write-out", "%{http_code}",
+        worker_url,
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
+        )
+
+        http_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+
+        if result.returncode != 0 or http_code != 200:
+            err = result.stderr.strip()[:80]
+            return None, f"worker HTTP {http_code}  {err}"
+
+        with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+
+        data = json.loads(raw)
+        target_status = data.get("status", 0)
+        body          = data.get("body", "")
+
+        if not (200 <= target_status < 300):
+            return None, f"worker relayed HTTP {target_status}"
+
+        return body, "ok"
+
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError) as e:
+        return None, f"worker error: {e}"
     except FileNotFoundError:
         print("[fatal] curl is not installed or not in PATH")
         sys.exit(1)
@@ -115,14 +161,20 @@ def fetch(url: str, ua: str) -> tuple[str | None, str]:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    ua = os.environ.get("SRC_UA", "").strip()
+    ua          = os.environ.get("SRC_UA", "").strip()
+    worker_url  = os.environ.get("CF_WORKER_URL", "").strip()
+    worker_token= os.environ.get("CF_WORKER_TOKEN", "").strip()
+
     if not ua:
         print("[fatal] SRC_UA is not set.")
         sys.exit(1)
 
+    use_worker = bool(worker_url and worker_token)
+
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     print(f"Output : {os.path.abspath(OUTPUT_DIR)}")
     print(f"UA     : {ua[:72]}{'...' if len(ua) > 72 else ''}")
+    print(f"Worker : {'enabled' if use_worker else 'disabled (CF_WORKER_URL or CF_WORKER_TOKEN not set)'}")
     print()
 
     saved   = 0
@@ -137,8 +189,19 @@ def main() -> None:
 
         print(f"[{idx:02d}] {key}")
 
-        content, reason = fetch(url, ua)
+        # ── Step 1: direct request ────────────────────────────────────────
+        content, http_code, reason = curl_fetch(url, ua)
 
+        # ── Step 2: 403 → retry via Worker ───────────────────────────────
+        if content is None and http_code == 403 and use_worker:
+            print(f"    [direct] HTTP 403 — retrying via Worker...")
+            content, reason = worker_fetch(url, ua, worker_url, worker_token)
+            if content is not None:
+                print(f"    [worker] ok")
+            else:
+                print(f"    [worker] {reason}")
+
+        # ── Step 3: evaluate result ───────────────────────────────────────
         if content is None:
             print(f"    -> skip  ({reason})\n")
             skipped += 1
