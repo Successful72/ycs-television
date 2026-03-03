@@ -1,17 +1,9 @@
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-IPTV 央视付费频道提取工具
-从 ./sources 目录下的 m3u 和 txt 格式 IPTV 订阅文件中，
-提取所有 CCTV 付费频道的播放链接，组装成新的 m3u 文件。
-输出到 ./sources/temp 目录
-"""
 
 import os
 import re
 import glob
-from pathlib import Path
 
 # ─────────────────────────────────────────────
 # 1. 目标频道定义（标准名称 + 匹配关键词列表）
@@ -119,92 +111,6 @@ def match_channel(name: str):
 # ─────────────────────────────────────────────
 # 3. 解析 m3u 格式文件（逐行读取优化版）
 # ─────────────────────────────────────────────
-def parse_m3u(filepath: str):
-    """
-    返回列表：[{"name": ..., "url": ..., "extinf_line": ...}, ...]
-    """
-    results = []
-    try:
-        with open(filepath, encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()
-    except Exception as e:
-        print(f"❌ 读取文件失败 {filepath}: {e}")
-        return []
-
-    i = 0
-    while i < len(lines):
-        line = lines[i].rstrip()
-        if line.startswith("#EXTINF"):
-            extinf_line = line
-            # 提取频道名（#EXTINF 最后一个逗号后面的内容）
-            m = re.search(r",(.+)$", line)
-            name = m.group(1).strip() if m else ""
-            # 下一行应为 URL
-            j = i + 1
-            while j < len(lines) and lines[j].strip() == "":
-                j += 1
-            if j < len(lines):
-                url = lines[j].strip()
-                if url and not url.startswith("#"):
-                    results.append({"name": name, "url": url, "extinf_line": extinf_line})
-                    i = j + 1
-                    continue
-        i += 1
-    return results
-
-
-# ─────────────────────────────────────────────
-# 4. 解析 txt 格式文件（两种常见格式）
-#    格式A：频道名,URL
-#    格式B：#EXTINF ... （同 m3u，但扩展名是 txt）
-# ─────────────────────────────────────────────
-def parse_txt(filepath: str):
-    results = []
-    try:
-        with open(filepath, encoding="utf-8", errors="ignore") as f:
-            content = f.read()
-    except Exception as e:
-        print(f"❌ 读取文件失败 {filepath}: {e}")
-        return []
-
-    # 如果文件内含 #EXTINF，按 m3u 方式处理
-    if "#EXTINF" in content:
-        lines = content.splitlines()
-        i = 0
-        while i < len(lines):
-            line = lines[i].rstrip()
-            if line.startswith("#EXTINF"):
-                m = re.search(r",(.+)$", line)
-                name = m.group(1).strip() if m else ""
-                j = i + 1
-                while j < len(lines) and lines[j].strip() == "":
-                    j += 1
-                if j < len(lines):
-                    url = lines[j].strip()
-                    if url and not url.startswith("#"):
-                        results.append({"name": name, "url": url, "extinf_line": line})
-                        i = j + 1
-                        continue
-            i += 1
-        return results
-
-    # 否则按 "频道名,URL" 格式逐行处理
-    for line in content.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        # 支持逗号或空格分隔
-        parts = re.split(r",\s*|\s{2,}", line, maxsplit=1)
-        if len(parts) == 2:
-            name, url = parts[0].strip(), parts[1].strip()
-            if re.match(r"https?://|rtsp://|rtmp://|rtp://", url, re.IGNORECASE):
-                results.append({"name": name, "url": url, "extinf_line": None})
-    return results
-
-
-# ─────────────────────────────────────────────
-# 5. 逐行读取优化版解析器
-# ─────────────────────────────────────────────
 def parse_file_line_by_line(filepath: str):
     """
     逐行读取文件的通用解析器，内存友好型
@@ -215,9 +121,7 @@ def parse_file_line_by_line(filepath: str):
     
     try:
         with open(filepath, encoding="utf-8", errors="ignore") as f:
-            lines = f.readlines()  # 对于 GitHub Actions 的小文件，一次读取也没问题
-            # 但如果文件真的很大，可以使用迭代器方式：
-            # lines = f  # 这样 lines 就是迭代器
+            lines = f.readlines()
     except Exception as e:
         print(f"❌ 读取文件失败 {filepath}: {e}")
         return []
@@ -229,7 +133,7 @@ def parse_file_line_by_line(filepath: str):
         # m3u 格式解析
         i = 0
         while i < len(lines):
-            line = lines[i].rstrip() if hasattr(lines[i], 'rstrip') else lines[i].strip()
+            line = lines[i].rstrip()
             if line.startswith("#EXTINF"):
                 extinf_line = line
                 m = re.search(r",(.+)$", line)
@@ -237,7 +141,7 @@ def parse_file_line_by_line(filepath: str):
                 # 查找下一行非空行作为 URL
                 j = i + 1
                 while j < len(lines):
-                    next_line = lines[j].rstrip() if hasattr(lines[j], 'rstrip') else lines[j].strip()
+                    next_line = lines[j].rstrip()
                     if next_line and not next_line.startswith("#"):
                         url = next_line
                         results.append({"name": name, "url": url, "extinf_line": extinf_line})
@@ -251,7 +155,7 @@ def parse_file_line_by_line(filepath: str):
     else:
         # txt 格式解析（频道名,URL）
         for line in lines:
-            line = line.strip() if hasattr(line, 'strip') else line
+            line = line.strip()
             if not line or line.startswith("#"):
                 continue
             parts = re.split(r",\s*|\s{2,}", line, maxsplit=1)
@@ -264,40 +168,36 @@ def parse_file_line_by_line(filepath: str):
 
 
 # ─────────────────────────────────────────────
-# 6. 主流程
+# 4. 主流程
 # ─────────────────────────────────────────────
 def main():
-    # GitHub Actions 环境下的路径
-    base_dir = Path(__file__).parent  # 获取脚本所在目录
-    source_dir = base_dir / "sources"  # 源文件目录
-    temp_dir = source_dir / "temp"     # 输出目录
+    # 使用相对于工作目录的路径
+    input_dir = "sources"
+    output_dir = os.path.join("sources", "temp")
+    output_path = os.path.join(output_dir, "央视付费频道.m3u")
     
-    # 确保 temp 目录存在
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    
-    output_file = temp_dir / "央视付费频道.m3u"
+    # 确保输出目录存在
+    os.makedirs(output_dir, exist_ok=True)
     
     print(f"📁 当前工作目录: {os.getcwd()}")
-    print(f"📁 脚本所在目录: {base_dir}")
-    print(f"📁 源文件目录: {source_dir}")
-    print(f"📁 输出目录: {temp_dir}")
+    print(f"📁 源文件目录: {input_dir}")
+    print(f"📁 输出目录: {output_dir}")
 
     # 检查源目录是否存在
-    if not source_dir.exists():
-        print(f"❌ 源目录不存在: {source_dir}")
-        print("请在GitHub Actions的workflow中确保已创建sources目录并放入文件")
+    if not os.path.exists(input_dir):
+        print(f"❌ 源目录不存在: {input_dir}")
         return
 
     # 搜集所有 m3u / m3u8 / txt 文件
     files = []
-    for pattern in ["src-*.m3u", "src-*.m3u8", "src-*.txt"]:
-        files.extend(glob.glob(str(source_dir / pattern)))
+    for pattern in ["*.m3u", "*.m3u8", "*.txt"]:
+        files.extend(glob.glob(os.path.join(input_dir, pattern)))
     
     # 排除 temp 目录中的文件
-    files = [f for f in files if not f.startswith(str(temp_dir))]
+    files = [f for f in files if not f.startswith(os.path.join(input_dir, "temp"))]
 
     if not files:
-        print(f"⚠️  在 {source_dir} 中未找到任何 .m3u / .m3u8 / .txt 文件")
+        print(f"⚠️  在 {input_dir} 中未找到任何 .m3u / .m3u8 / .txt 文件")
         print("请检查文件是否已放入sources目录")
         return
 
@@ -370,11 +270,11 @@ def main():
 
     # 写入文件
     try:
-        with open(output_file, "w", encoding="utf-8-sig") as f:
+        with open(output_path, "w", encoding="utf-8-sig") as f:
             f.writelines(output_lines)
         print(f"\n🎉 完成！共提取 {total} 条链接")
-        print(f"📄 输出文件：{output_file}")
-        print(f"📁 文件大小：{os.path.getsize(output_file)} 字节")
+        print(f"📄 输出文件：{output_path}")
+        print(f"📁 文件大小：{os.path.getsize(output_path)} 字节")
     except Exception as e:
         print(f"❌ 写入文件失败: {e}")
 
