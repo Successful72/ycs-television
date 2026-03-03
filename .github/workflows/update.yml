@@ -2,8 +2,8 @@ name: Sync Sources
 
 on:
   workflow_dispatch:          # 手动触发
-  schedule:
-    - cron: "0 */6 * * *"    # 每 6 小时自动运行（按需修改或删除）
+  #schedule:
+  #  - cron: "0 */6 * * *"    # 每 6 小时自动运行（按需修改或删除）
 
 jobs:
   sync:
@@ -28,10 +28,9 @@ jobs:
 
           # 25002500 Cloudflare Worker 4ee37406Ff0853ef9009Ff0c75284e8e7ed58fc7 CF IP 5c019501Ff09250025002500250025002500250025002500250025002500250025002500
           # 59824e0d9700898153ef75597a7aFf0c811a672c4f1a81ea52a88df38fc7 Worker 903b8f91
-          # CF_WORKER_URL   : Worker 57305740Ff0c5982 https://xxxx.workers.dev/fetch
-          # CF_WORKER_TOKEN : 4e0e Worker 73af588353d891cf AUTH_TOKEN 76f8540c7684503c
-          CF_WORKER_URL:   ${{ secrets.CF_WORKER_URL }}
-          CF_WORKER_TOKEN: ${{ secrets.CF_WORKER_TOKEN }}
+          # ── Alternate route (optional) ──────────────────────────────────
+          AUX_ENDPOINT: ${{ secrets.AUX_ENDPOINT }}
+          AUX_KEY:      ${{ secrets.AUX_KEY }}
 
           # ── Source URLs ────────────────────────────────────────────
           # Secrets → New secret，依次添加 SRC_LINK_1 … SRC_LINK_50
