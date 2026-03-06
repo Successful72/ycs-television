@@ -142,6 +142,11 @@ def fetch_url_list(endpoint: str, loc: str, key: str) -> str | None:
         with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
 
+         # 👇 添加这行，打印返回的内容
+        print(f"  [DEBUG] Response content:\n{content}\n")
+        
+        return content
+
     except subprocess.TimeoutExpired:
         print("  [error] timeout")
         return None
