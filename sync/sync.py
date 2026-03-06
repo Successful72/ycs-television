@@ -90,22 +90,31 @@ def direct_fetch(url: str, ua: str) -> tuple[str | None, int, str]:
             pass
 
 
-def fetch_url_list(endpoint: str, loc: str, key: str, ua: str) -> str | None:
+def build_url(endpoint: str, loc: str, key: str) -> str:
+    """
+    Safely build the request URL.
+    - Strip accidental protocol prefix from endpoint
+    - Ensure exactly one slash between endpoint and loc
+    - Append key directly
+    """
+    for prefix in ("https://", "http://"):
+        if endpoint.startswith(prefix):
+            endpoint = endpoint[len(prefix):]
+    endpoint = endpoint.rstrip("/")
+    if loc and not loc.startswith("/"):
+        loc = "/" + loc
+    return f"https://{endpoint}{loc}{key}"
+
+
+def fetch_url_list(endpoint: str, loc: str, key: str) -> str | None:
     """
     Fetch URL list from Cloudflare Pages via POST request.
     Final URL: https://<endpoint><loc><key>
     Returns raw response text, or None on failure.
     """
-    url = f"https://{endpoint}/{loc}{key}"
-    print(f"  Fetching URL list: {url}")
-    body, _, reason = direct_fetch(url, ua)
-    
-    # 👇 就加这一行
-    print(f"  [DEBUG] Response content:\n{body}\n")
-    
-    if body is None:
-        print(f"  [error] {reason}")
-    return body
+    url = build_url(endpoint, loc, key)
+    masked = url.replace(key, "***") if key else url
+    print(f"  Fetching URL list: {masked}")
 
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
     os.close(tmp_fd)
@@ -116,7 +125,6 @@ def fetch_url_list(endpoint: str, loc: str, key: str, ua: str) -> str | None:
         "--location",
         "--max-time", str(TIMEOUT),
         "--request", "POST",
-        "--user-agent", ua,
         "--output", tmp_path,
         "--write-out", "%{http_code}",
         url,
@@ -306,7 +314,7 @@ def main() -> None:
 
     # ── Normal URLs ───────────────────────────────────────────────────────────
     print("=== Normal URLs ===")
-    normal_text = fetch_url_list(endpoint, loc_normal, key, ua)
+    normal_text = fetch_url_list(endpoint, loc_normal, key)
     if not normal_text:
         print("[warning] Could not fetch normal URL list — skipping.\n")
     else:
@@ -349,7 +357,7 @@ def main() -> None:
 
     # ── Special URLs ──────────────────────────────────────────────────────────
     print("=== Special URLs ===")
-    special_text = fetch_url_list(endpoint, loc_special, key, ua)
+    special_text = fetch_url_list(endpoint, loc_special, key)
     if not special_text:
         print("[warning] Could not fetch special URL list — skipping.\n")
     else:
