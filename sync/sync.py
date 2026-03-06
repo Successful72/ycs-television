@@ -142,8 +142,17 @@ def fetch_url_list(endpoint: str, loc: str, key: str) -> str | None:
         with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
             return f.read()
 
-         # 👇 添加这行，打印返回的内容
-        print(f"  [DEBUG] Response content:\n{content}\n")
+         # 👇 打印前10行用于调试
+        if content:
+            lines = content.splitlines()
+            print(f"  [DEBUG] Response content (first 10 lines):")
+            for i, line in enumerate(lines[:10]):
+                print(f"    {i+1}: {line}")
+            if len(lines) > 10:
+                print(f"    ... and {len(lines)-10} more lines")
+        else:
+            print(f"  [DEBUG] Response is empty")
+        print()  # 空行，让输出更清晰
         
         return content
 
