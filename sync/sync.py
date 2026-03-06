@@ -92,16 +92,51 @@ def direct_fetch(url: str, ua: str) -> tuple[str | None, int, str]:
 
 def fetch_url_list(endpoint: str, loc: str, key: str, ua: str) -> str | None:
     """
-    Fetch URL list from Cloudflare Pages.
+    Fetch URL list from Cloudflare Pages via POST request.
     Final URL: https://<endpoint><loc><key>
     Returns raw response text, or None on failure.
     """
     url = f"https://{endpoint}{loc}{key}"
     print(f"  Fetching URL list: {url}")
-    body, _, reason = direct_fetch(url, ua)
-    if body is None:
-        print(f"  [error] {reason}")
-    return body
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
+    os.close(tmp_fd)
+
+    cmd = [
+        "curl",
+        "--silent",
+        "--location",
+        "--max-time", str(TIMEOUT),
+        "--request", "POST",
+        "--user-agent", ua,
+        "--output", tmp_path,
+        "--write-out", "%{http_code}",
+        url,
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
+        )
+        http_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+
+        if result.returncode != 0 or not (200 <= http_code < 300):
+            print(f"  [error] HTTP {http_code}")
+            return None
+
+        with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
+            return f.read()
+
+    except subprocess.TimeoutExpired:
+        print("  [error] timeout")
+        return None
+    except FileNotFoundError:
+        print("[fatal] curl is not installed or not in PATH")
+        sys.exit(1)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
 
 
 def parse_normal_urls(text: str) -> list[tuple[int, str]]:
