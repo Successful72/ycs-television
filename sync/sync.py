@@ -449,7 +449,7 @@ def main() -> None:
         print(f"Found {len(special_urls)} special URL(s)\n")
 
         for idx, url, script_path in special_urls:
-            print(f"[S-{idx:02d}] link {idx}  url={url[:72]}{'...' if len(url) > 72 else ''}")
+            print(f"[S-{idx:02d}] link {idx} Using other way......")
 
             if script_path is None:
                 print(f"    -> skip  (no script path defined)\n")
