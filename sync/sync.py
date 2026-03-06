@@ -96,7 +96,7 @@ def fetch_url_list(endpoint: str, loc: str, key: str, ua: str) -> str | None:
     Final URL: https://<endpoint><loc><key>
     Returns raw response text, or None on failure.
     """
-    url = f"https://{endpoint}{loc}{key}"
+    url = f"{endpoint}{loc}{key}"
     print(f"  Fetching URL list: {url}")
 
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
