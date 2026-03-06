@@ -115,6 +115,14 @@ def fetch_url_list(endpoint: str, loc: str, key: str) -> str | None:
     url = build_url(endpoint, loc, key)
     masked = url.replace(key, "***") if key else url
     print(f"  Fetching URL list: {masked}")
+    body, _, reason = direct_fetch(url, ua)
+    
+    # 👇 就加这一行
+    print(f"  [DEBUG] Response content:\n{body}\n")
+    
+    if body is None:
+        print(f"  [error] {reason}")
+    return body
 
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
     os.close(tmp_fd)
