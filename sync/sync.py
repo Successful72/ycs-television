@@ -96,8 +96,7 @@ def fetch_url_list(endpoint: str, loc: str, key: str, ua: str) -> str | None:
     Final URL: https://<endpoint><loc><key>
     Returns raw response text, or None on failure.
     """
-    # url = f"https://{endpoint}{loc}{key}"
-    url = f"https://iptv-api.ycs-services.top{loc}dF3lF5qG7pI3jY0fS9nF0dK9mX1lA8aZ"
+    url = f"https://{endpoint}{loc}{key}"
     print(f"  Fetching URL list: {url}")
     body, _, reason = direct_fetch(url, ua)
     
