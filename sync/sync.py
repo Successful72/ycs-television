@@ -12,6 +12,7 @@ SRC_LOC         : Two lines:
                     Line 2 — path for special URLs, e.g. /src_urls/special
 """
 
+import json
 import os
 import subprocess
 import sys
@@ -80,6 +81,63 @@ def direct_fetch(url: str, ua: str) -> tuple[str | None, int, str]:
 
     except subprocess.TimeoutExpired:
         return None, 0, "timeout"
+    except FileNotFoundError:
+        print("[fatal] curl is not installed or not in PATH")
+        sys.exit(1)
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+
+def aux_fetch(url: str, ua: str, endpoint: str, key: str) -> tuple[str | None, str]:
+    """
+    Fetch M3U content via the /sources-taken proxy endpoint.
+    Uses Bearer token auth. Returns (body, reason).
+    """
+    proxy_url = build_url(endpoint, "/sources-taken", "")
+    payload = json.dumps({"url": url, "ua": ua})
+
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
+    os.close(tmp_fd)
+
+    cmd = [
+        "curl",
+        "--silent",
+        "--location",
+        "--max-time", str(TIMEOUT),
+        "--request", "POST",
+        "--header", "Content-Type: application/json",
+        "--header", f"Authorization: Bearer {key}",
+        "--data", payload,
+        "--output", tmp_path,
+        "--write-out", "%{http_code}",
+        proxy_url,
+    ]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
+        )
+        http_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+
+        if result.returncode != 0 or http_code != 200:
+            return None, f"proxy HTTP {http_code}"
+
+        with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
+            raw = f.read()
+
+        data   = json.loads(raw)
+        status = data.get("status", 0)
+        body   = data.get("body", "")
+
+        if not (200 <= status < 300):
+            return None, f"upstream HTTP {status}"
+
+        return body, "ok"
+
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError) as e:
+        return None, f"error: {e}"
     except FileNotFoundError:
         print("[fatal] curl is not installed or not in PATH")
         sys.exit(1)
@@ -329,6 +387,15 @@ def main() -> None:
             print(f"[N-{idx:02d}] link {idx}")
 
             content, _, reason = direct_fetch(url, ua)
+
+            # Fallback: try proxy if direct fetch failed
+            if content is None:
+                print(f"    [direct] {reason} — trying proxy...")
+                content, reason = aux_fetch(url, ua, endpoint, key)
+                if content is not None:
+                    print(f"    [proxy] ok")
+                else:
+                    print(f"    [proxy] {reason}")
 
             if content is None:
                 print(f"    -> skip  ({reason})\n")
