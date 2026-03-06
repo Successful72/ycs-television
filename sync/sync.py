@@ -5,7 +5,7 @@ Source Sync  —  fetch remote subscription feeds and save locally.
 Environment variables (GitHub Secrets/Variables)
 -------------------------------------------------
 SRC_UA          : User-Agent string (required)
-AUX_ENDPOINT    : Cloudflare Pages domain, e.g. 123456.xyz (required)
+AUX_ENDPOINT    : Relay service domain, e.g. 123456.xyz (required)
 AUX_KEY         : Access key appended directly to endpoint URL (required)
 SRC_LOC         : Two lines:
                     Line 1 — path for normal URLs,  e.g. /src_urls/normal
@@ -41,111 +41,119 @@ def detect_format(content: str) -> str | None:
 
 def direct_fetch(url: str, ua: str) -> tuple[str | None, int, str]:
     """Direct curl download. Returns (body, http_code, reason)."""
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
-    os.close(tmp_fd)
-
-    cmd = [
-        "curl",
-        "--silent",
-        "--location",
-        "--max-time", str(TIMEOUT),
-        "--user-agent", ua,
-        "--output", tmp_path,
-        "--write-out", "%{http_code}\t%{url_effective}\t%{num_redirects}",
-        url,
-    ]
+    tmp_path = None
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
-        )
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
+        os.close(tmp_fd)
 
-        wout      = result.stdout.strip().split("\t")
-        http_code = int(wout[0]) if wout and wout[0].isdigit() else 0
-        final_url = wout[1] if len(wout) > 1 else url
-        n_redir   = wout[2] if len(wout) > 2 else "0"
+        cmd = [
+            "curl",
+            "--silent",
+            "--location",
+            "--max-time", str(TIMEOUT),
+            "--user-agent", ua,
+            "--output", tmp_path,
+            "--write-out", "%{http_code}\t%{url_effective}\t%{num_redirects}",
+            url,
+        ]
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
+            )
 
-        if n_redir not in ("0", ""):
-            print(f"    [redirect] x{n_redir} -> HTTP {http_code}  {final_url}")
+            wout      = result.stdout.strip().split("\t")
+            http_code = int(wout[0]) if wout and wout[0].isdigit() else 0
+            final_url = wout[1] if len(wout) > 1 else url
+            n_redir   = wout[2] if len(wout) > 2 else "0"
 
-        if result.returncode != 0:
-            err = result.stderr.strip()[:120]
-            return None, http_code, f"curl exit={result.returncode}  {err}"
-        if http_code == 0:
-            return None, 0, "no response"
-        if not (200 <= http_code < 300):
-            return None, http_code, f"HTTP {http_code}"
+            # 修改：重定向信息中不显示具体URL
+            if n_redir not in ("0", ""):
+                print(f"    [redirect] x{n_redir} -> HTTP {http_code}")
 
-        with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
-            body = f.read()
-        return body, http_code, "ok"
+            if result.returncode != 0:
+                err = result.stderr.strip()[:120]
+                return None, http_code, f"curl exit={result.returncode}  {err}"
+            if http_code == 0:
+                return None, 0, "no response"
+            if not (200 <= http_code < 300):
+                return None, http_code, f"HTTP {http_code}"
 
-    except subprocess.TimeoutExpired:
-        return None, 0, "timeout"
+            with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
+                body = f.read()
+            return body, http_code, "ok"
+
+        except subprocess.TimeoutExpired:
+            return None, 0, "timeout"
     except FileNotFoundError:
         print("[fatal] curl is not installed or not in PATH")
         sys.exit(1)
     finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
-def aux_fetch(url: str, ua: str, endpoint: str, key: str) -> tuple[str | None, str]:
+def alt_fetch(url: str, ua: str, endpoint: str, key: str) -> tuple[str | None, str]:
     """
-    Fetch M3U content via the /sources-taken proxy endpoint.
+    Fetch M3U content via the /sources-taken relay endpoint.
     Uses Bearer token auth. Returns (body, reason).
+    修改：将proxy改为alt way（替代方式）
     """
-    proxy_url = build_url(endpoint, "/sources-taken", "")
+    relay_url = build_url(endpoint, "/sources-taken", "")
     payload = json.dumps({"url": url, "ua": ua})
 
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
-    os.close(tmp_fd)
-
-    cmd = [
-        "curl",
-        "--silent",
-        "--location",
-        "--max-time", str(TIMEOUT),
-        "--request", "POST",
-        "--header", "Content-Type: application/json",
-        "--header", f"Authorization: Bearer {key}",
-        "--data", payload,
-        "--output", tmp_path,
-        "--write-out", "%{http_code}",
-        proxy_url,
-    ]
+    tmp_path = None
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
-        )
-        http_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
+        os.close(tmp_fd)
 
-        if result.returncode != 0 or http_code != 200:
-            return None, f"proxy HTTP {http_code}"
+        cmd = [
+            "curl",
+            "--silent",
+            "--location",
+            "--max-time", str(TIMEOUT),
+            "--request", "POST",
+            "--header", "Content-Type: application/json",
+            "--header", f"Authorization: Bearer {key}",
+            "--data", payload,
+            "--output", tmp_path,
+            "--write-out", "%{http_code}",
+            relay_url,
+        ]
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
+            )
+            http_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
 
-        with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
-            raw = f.read()
+            if result.returncode != 0 or http_code != 200:
+                return None, f"relay HTTP {http_code}"
 
-        data   = json.loads(raw)
-        status = data.get("status", 0)
-        body   = data.get("body", "")
+            with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
+                raw = f.read()
 
-        if not (200 <= status < 300):
-            return None, f"upstream HTTP {status}"
+            data   = json.loads(raw)
+            status = data.get("status", 0)
+            body   = data.get("body", "")
 
-        return body, "ok"
+            if not (200 <= status < 300):
+                return None, f"upstream HTTP {status}"
 
-    except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError) as e:
-        return None, f"error: {e}"
+            return body, "ok"
+
+        except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError) as e:
+            return None, f"error: {e}"
     except FileNotFoundError:
         print("[fatal] curl is not installed or not in PATH")
         sys.exit(1)
     finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 def build_url(endpoint: str, loc: str, key: str) -> str:
@@ -166,7 +174,8 @@ def build_url(endpoint: str, loc: str, key: str) -> str:
 
 def fetch_url_list(endpoint: str, loc: str, key: str) -> str | None:
     """
-    Fetch URL list from Cloudflare Pages via POST request.
+    Fetch URL list from relay service via POST request.
+    修改：将Cloudflare Pages改为relay service
     Final URL: https://<endpoint><loc><key>
     Returns raw response text, or None on failure.
     """
@@ -174,43 +183,46 @@ def fetch_url_list(endpoint: str, loc: str, key: str) -> str | None:
     masked = url.replace(key, "***") if key else url
     print(f"  Fetching URL list: {masked}")
 
-    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
-    os.close(tmp_fd)
-
-    cmd = [
-        "curl",
-        "--silent",
-        "--location",
-        "--max-time", str(TIMEOUT),
-        "--request", "POST",
-        "--output", tmp_path,
-        "--write-out", "%{http_code}",
-        url,
-    ]
+    tmp_path = None
     try:
-        result = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
-        )
-        http_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".tmp")
+        os.close(tmp_fd)
 
-        if result.returncode != 0 or not (200 <= http_code < 300):
-            print(f"  [error] HTTP {http_code}")
+        cmd = [
+            "curl",
+            "--silent",
+            "--location",
+            "--max-time", str(TIMEOUT),
+            "--request", "POST",
+            "--output", tmp_path,
+            "--write-out", "%{http_code}",
+            url,
+        ]
+        try:
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=TIMEOUT + 5
+            )
+            http_code = int(result.stdout.strip()) if result.stdout.strip().isdigit() else 0
+
+            if result.returncode != 0 or not (200 <= http_code < 300):
+                print(f"  [error] HTTP {http_code}")
+                return None
+
+            with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
+
+        except subprocess.TimeoutExpired:
+            print("  [error] timeout")
             return None
-
-        with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
-            return f.read()
-
-    except subprocess.TimeoutExpired:
-        print("  [error] timeout")
-        return None
     except FileNotFoundError:
         print("[fatal] curl is not installed or not in PATH")
         sys.exit(1)
     finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
 
 
 def parse_normal_urls(text: str) -> list[tuple[int, str]]:
@@ -388,14 +400,15 @@ def main() -> None:
 
             content, _, reason = direct_fetch(url, ua)
 
-            # Fallback: try proxy if direct fetch failed
+            # Fallback: try alt way if direct fetch failed
+            # 修改：将proxy改为alt way（替代方式）
             if content is None:
-                print(f"    [direct] {reason} — trying proxy...")
-                content, reason = aux_fetch(url, ua, endpoint, key)
+                print(f"    [direct] {reason} — trying alt way...")
+                content, reason = alt_fetch(url, ua, endpoint, key)
                 if content is not None:
-                    print(f"    [proxy] ok")
+                    print(f"    [alt way] ok")
                 else:
-                    print(f"    [proxy] {reason}")
+                    print(f"    [alt way] {reason}")
 
             if content is None:
                 print(f"    -> skip  ({reason})\n")
