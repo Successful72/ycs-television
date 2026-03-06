@@ -140,11 +140,7 @@ def fetch_url_list(endpoint: str, loc: str, key: str) -> str | None:
             return None
 
         with open(tmp_path, "r", encoding="utf-8", errors="replace") as f:
-            content = f.read()
-            
-        # ✅ 先打印，再返回
-        print(f"  [DEBUG] Response content:\n{content}\n")
-        return content
+            return f.read()
 
     except subprocess.TimeoutExpired:
         print("  [error] timeout")
@@ -170,9 +166,11 @@ def parse_normal_urls(text: str) -> list[tuple[int, str]]:
     results = []
     for line in text.splitlines():
         line = line.strip()
-        if not line or ":" not in line:
+        # Support both full-width（：）and half-width（:）colons
+        sep = "：" if "：" in line else ":"
+        if sep not in line:
             continue
-        key_part, _, val = line.partition(":")
+        key_part, _, val = line.partition(sep)
         key_part = key_part.strip().lower()
         val = val.strip()
         if key_part.startswith("url-"):
@@ -199,9 +197,11 @@ def parse_special_urls(text: str) -> list[tuple[int, str, str | None]]:
     data: dict[int, dict] = {}
     for line in text.splitlines():
         line = line.strip()
-        if not line or ":" not in line:
+        # Support both full-width（：）and half-width（:）colons
+        sep = "：" if "：" in line else ":"
+        if sep not in line:
             continue
-        key_part, _, val = line.partition(":")
+        key_part, _, val = line.partition(sep)
         key_part = key_part.strip().lower()
         val = val.strip()
 
