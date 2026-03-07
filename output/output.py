@@ -1,12 +1,14 @@
 """
-Upload M3U playlist to remote key-value storage.
+Upload processed M3U playlist to Cloudflare KV storage.
+
+This script handles the first type of playlist file (complete_playlist_iptv).
+The KV key is fixed as "complete_playlist_iptv" and requires no external configuration.
 
 Required environment variables (configured in repository secrets):
   REMOTE_HOST         - Remote service host
   STORAGE_ACCOUNT_ID  - Account identifier
   STORAGE_NS_ID       - Storage namespace identifier
   STORAGE_API_TOKEN   - API access token (write permission)
-  STORAGE_KEY_NAME    - Key name for the playlist entry (e.g. "playlist")
 """
 
 import os
@@ -18,6 +20,9 @@ _STORAGE_ENDPOINT = (
     "https://api.{host}/client/v4/accounts/{account_id}"
     "/storage/kv/namespaces/{namespace_id}/values/{key}"
 )
+
+# Fixed KV key for the processed/complete playlist
+_KV_KEY = "complete_playlist_iptv"
 
 
 def get_env(name: str) -> str:
@@ -69,7 +74,6 @@ def main():
     account_id   = get_env("STORAGE_ACCOUNT_ID")
     namespace_id = get_env("STORAGE_NS_ID")
     api_token    = get_env("STORAGE_API_TOKEN")
-    key_name     = get_env("STORAGE_KEY_NAME")
 
     m3u_path = find_m3u_file(source_dir)
     print(f"[INFO] Found playlist file: {m3u_path}")
@@ -78,7 +82,7 @@ def main():
         content = f.read()
 
     print(f"[INFO] File size: {len(content.encode('utf-8'))} bytes")
-    push_content(remote_host, account_id, namespace_id, api_token, key_name, content)
+    push_content(remote_host, account_id, namespace_id, api_token, _KV_KEY, content)
 
 
 if __name__ == "__main__":
