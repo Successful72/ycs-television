@@ -24,22 +24,30 @@ CHANNEL_ORDER = [
 # 注意顺序：越特殊的规则放越前面，防止被宽泛规则吞掉
 CHANNEL_PATTERNS = [
     # CCTV-4 欧洲 / 美洲 —— 必须在普通 CCTV-4 之前
-    ("CCTV-4 欧洲",  r"cctv[-_\s]?0?4[-_\s]*(欧洲|europe|EUR)"),
-    ("CCTV-4 美洲",  r"cctv[-_\s]?0?4[-_\s]*(美洲|america|AME)"),
+    ("CCTV-4 欧洲",  r"cctv[-_\s]?0?4[-_\s]*(欧洲|europe|eur)"),
+    ("CCTV-4 美洲",  r"cctv[-_\s]?0?4[-_\s]*(美洲|america|ame)"),
     # CCTV-5+ —— 必须在 CCTV-5 之前
-    ("CCTV-5+",      r"cctv[-_\s]?0?5\+|cctv[-_\s]?0?5[-_\s]*(plus|\+|体育赛事)"),
-    # CCTV-4K（含"超高清"别名，如 CCTV4K超高清 / CCTV4超高清）—— 必须在普通 CCTV-4 之前
-    ("CCTV-4K",      r"cctv[-_\s]?4k|cctv[-_\s]?0?4[-_\s]*(超高清|uhd|4k)"),
-    # CCTV-8K（含"超高清"等别名）
-    ("CCTV-8K",      r"cctv[-_\s]?8k|cctv[-_\s]?0?8[-_\s]*(超高清|uhd|8k)"),
+    # 覆盖：CCTV5+ / CCTV-5+ / CCTV5plus / CCTV-5体育赛事 等
+    ("CCTV-5+",      r"cctv[-_\s]?0?5\s*(\+|plus|体育赛事)"),
+    # CCTV-4K —— 必须在普通 CCTV-4 之前
+    # 覆盖：CCTV4K / CCTV-4K / CCTV 4K / CCTV04K / CCTV4超高清 / CCTV-4 UHD 等
+    ("CCTV-4K",      r"cctv[-_\s]?0?4\s*k|cctv[-_\s]?0?4[-_\s]*(超高清|uhd)"),
+    # CCTV-8K —— 必须在普通 CCTV-8 之前
+    # 覆盖：CCTV8K / CCTV-8K / CCTV 8K / CCTV08K / CCTV8超高清 / CCTV-8 UHD 等
+    ("CCTV-8K",      r"cctv[-_\s]?0?8\s*k|cctv[-_\s]?0?8[-_\s]*(超高清|uhd)"),
     # 普通数字频道 1-17（用循环生成）
 ]
 
 # 普通数字频道
-for _n in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]:
+# 负向前瞻说明：
+#   单数字（1-9）：后面不能紧跟 数字/k/K/+/欧/美，防止误匹配 CCTV10~17、CCTV4K、CCTV5+、CCTV4欧洲 等
+#   双数字（10-17）：后面不能紧跟数字，防止误匹配三位数
+for _n in range(1, 18):
     _std = f"CCTV-{_n}"
-    # 匹配：cctv1 / cctv01 / cctv-1 / cctv-01 / cctv_1 / cctv 1，后面可跟中文说明
-    _pat = rf"cctv[-_\s]?0?{_n}(?!\d|k|\+|欧|美|plus)"  # 负向前瞻防止误匹配
+    if _n < 10:
+        _pat = rf"cctv[-_\s]?0?{_n}(?![\dkK+欧美])"
+    else:
+        _pat = rf"cctv[-_\s]?{_n}(?!\d)"
     CHANNEL_PATTERNS.append((_std, _pat))
 
 # 编译正则（不区分大小写）
