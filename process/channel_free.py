@@ -53,10 +53,22 @@ for _n in range(1, 18):
 # 编译正则（不区分大小写）
 COMPILED = [(std, re.compile(pat, re.IGNORECASE)) for std, pat in CHANNEL_PATTERNS]
 
+# ── 噪声词（匹配前从频道名中剔除）────────────────────────────────────────
+# 可随时在此列表中追加新的噪声词，如：|华数|百视通
+_NOISE_PATTERN = re.compile(
+    r"咪咕|migu|mgtv",
+    re.IGNORECASE,
+)
+
+
+def normalize_name(name: str) -> str:
+    """剔除频道名中的噪声词，便于后续正则匹配。"""
+    return _NOISE_PATTERN.sub("", name).strip()
+
 
 def identify_channel(name: str):
     """返回标准频道名，无法识别则返回 None。"""
-    name_stripped = name.strip()
+    name_stripped = normalize_name(name.strip())  # 预处理：剔除噪声词
     for std, regex in COMPILED:
         if regex.search(name_stripped):
             return std
@@ -85,7 +97,7 @@ def parse_m3u(text: str):
             # 下一行应该是 URL
             if i + 1 < len(lines):
                 url = lines[i + 1].strip()
-                if url and not url.startswith("#"):
+                if url and url.startswith("http"):
                     results.append((ch_name, url))
                     i += 2
                     continue
