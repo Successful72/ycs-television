@@ -174,10 +174,19 @@ MACAU_CHANNELS = [
 
 # ============================================================
 # 通用澳门相关兜底正则（命中后用原始频道名，排在已命名的后面）
+# 要求频道名必须同时满足两个条件：
+#   1. 包含澳门/Macau 等地名关键词
+#   2. 包含台/频道/卫视/TV/Channel 等电视相关词
+# 避免将"澳门赌场""澳门赛马"等无关内容误收录进来。
 # ============================================================
-MACAU_FALLBACK_PATTERNS = [
-    re.compile(r'澳門|澳门|Macau|Macao|MACAO|MACAU|TDM[\s\-_]', re.IGNORECASE),
-]
+_FALLBACK_REGION = re.compile(
+    r'澳[門门]|[Mm]acau|[Mm]acao|TDM[\s\-_]',
+    re.IGNORECASE
+)
+_FALLBACK_TV = re.compile(
+    r'[台臺]|频[道]|頻[道]|衛視|卫视|[Tt][Vv]|[Cc]hannel|[Ss]tation|电视|電視',
+    re.IGNORECASE
+)
 
 # 繁体 → 简体 对照表
 _T2S = str.maketrans(
@@ -211,11 +220,10 @@ def match_channel(extinf_line: str) -> str | None:
             if pat.search(search_text):
                 return ch_name
 
-    # 兜底：只要包含澳門/Macau 等关键词，原始名转简体后返回
-    for pat in MACAU_FALLBACK_PATTERNS:
-        if pat.search(search_text):
-            raw = display_name.strip() or tvg_name.strip() or "澳门频道"
-            return to_simplified(raw)
+    # 兜底：同时含澳门地名关键词 + 电视相关词，才视为澳门频道
+    if _FALLBACK_REGION.search(search_text) and _FALLBACK_TV.search(search_text):
+        raw = display_name.strip() or tvg_name.strip() or "澳门频道"
+        return to_simplified(raw)
 
     return None
 
@@ -271,6 +279,16 @@ def parse_file_line_by_line(filepath: str):
                     entries.append((extinf, url))
     return entries
 
+def natural_sort_key(filepath: str):
+    """
+    自然数排序键：将文件名中的数字部分按数值大小排序，
+    避免字典序导致 src-2 排在 src-10 之后的问题。
+    """
+    basename = os.path.basename(filepath)
+    parts = re.split(r'(\d+)', basename)
+    return [int(p) if p.isdigit() else p.lower() for p in parts]
+
+
 def main():
     # 使用相对于工作目录的路径
     input_dir = "sources"
@@ -298,6 +316,8 @@ def main():
     files = [f for f in files if not f.startswith(os.path.join(input_dir, "temp"))]
     # 排除输出文件本身（如果存在）
     files = [f for f in files if os.path.abspath(f) != os.path.abspath(output_path)]
+    # 按自然数顺序排序
+    files = sorted(set(files), key=natural_sort_key)
 
     if not files:
         print(f"⚠️  在 {input_dir} 中未找到任何 m3u/txt 文件！")
