@@ -106,16 +106,22 @@ def parse_file_line_by_line(filepath: str):
         while i < len(lines):
             line = lines[i].strip()
             if line.startswith("#EXTINF"):
-                # 取频道名：逗号之后的部分
-                m = re.search(r",(.+)$", line)
-                ch_name = m.group(1).strip() if m else ""
+                # 取 tvg-name 属性（可能为空）
+                tvg_match = re.search(r'tvg-name="([^"]*)"', line, re.IGNORECASE)
+                tvg_name = tvg_match.group(1).strip() if tvg_match else ""
+                # 取显示名：逗号之后的部分
+                disp_match = re.search(r",(.+)$", line)
+                display_name = disp_match.group(1).strip() if disp_match else ""
+                # 两者拼合作为匹配文本，优先用非空的那个作为代表名
+                ch_name = display_name or tvg_name
+                search_name = f"{tvg_name} {display_name}".strip()
                 # 查找下一行非空行作为 URL
                 j = i + 1
                 while j < len(lines):
                     next_line = lines[j].strip()
                     if next_line and not next_line.startswith("#"):
                         url = next_line
-                        entries.append((ch_name, url))
+                        entries.append((search_name, url))
                         i = j + 1
                         break
                     j += 1
@@ -140,6 +146,16 @@ def parse_file_line_by_line(filepath: str):
 # ============================================================
 # 主逻辑
 # ============================================================
+def natural_sort_key(filepath: str):
+    """
+    自然数排序键：将文件名中的数字部分按数值大小排序，
+    避免字典序导致 src-2 排在 src-10 之后的问题。
+    """
+    basename = os.path.basename(filepath)
+    parts = re.split(r'(\d+)', basename)
+    return [int(p) if p.isdigit() else p.lower() for p in parts]
+
+
 def main():
     # 使用相对于工作目录的路径
     input_dir = "sources"
@@ -170,7 +186,7 @@ def main():
     files = [f for f in files if not f.startswith(os.path.join(input_dir, "temp"))]
     # 排除输出文件本身（如果存在）
     files = [f for f in files if os.path.abspath(f) != os.path.abspath(output_path)]
-    files = sorted(set(files))
+    files = sorted(set(files), key=natural_sort_key)
 
     if not files:
         print(f"❌ 在 {input_dir} 下未找到任何 m3u/m3u8/txt 文件！")
