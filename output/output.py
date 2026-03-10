@@ -57,7 +57,7 @@ def push_content(host: str, account_id: str, namespace_id: str,
         "Content-Type": "text/plain; charset=utf-8",
     }
 
-    print(f"[INFO] Pushing playlist to remote storage, key='{key}' ...")
+    print(f"[INFO] Pushing playlist to remote storage...")
     resp = requests.put(url, headers=headers, data=content.encode("utf-8"))
 
     if resp.status_code == 200:
