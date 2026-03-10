@@ -71,6 +71,16 @@ HK_CHANNELS = [
 # 解析函数
 # ============================================================
 
+def natural_sort_key(filepath: str):
+    """
+    自然数排序键：将文件名中的数字部分按数值大小排序，
+    避免字典序导致 src-2 排在 src-10 之后的问题。
+    """
+    basename = os.path.basename(filepath)
+    parts = re.split(r'(\d+)', basename)
+    return [int(p) if p.isdigit() else p.lower() for p in parts]
+
+
 def build_matchers():
     """预编译所有正则"""
     matchers = []
@@ -156,18 +166,6 @@ def parse_file_line_by_line(filepath: str):
     
     return entries
 
-def read_file_with_encoding(filepath: str) -> str:
-    """尝试多种编码读取文件"""
-    for enc in ["utf-8", "utf-8-sig", "gbk", "gb18030", "big5"]:
-        try:
-            with open(filepath, "r", encoding=enc, errors="strict") as f:
-                return f.read()
-        except (UnicodeDecodeError, LookupError):
-            continue
-    # 最后用 ignore 模式
-    with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-        return f.read()
-
 # ============================================================
 # 主流程
 # ============================================================
@@ -199,6 +197,8 @@ def main():
     files = [f for f in files if not f.startswith(os.path.join(input_dir, "temp"))]
     # 排除输出文件本身（如果存在）
     files = [f for f in files if os.path.abspath(f) != os.path.abspath(output_path)]
+    # 按自然数顺序排序
+    files = sorted(set(files), key=natural_sort_key)
 
     if not files:
         print(f"⚠️  在 {input_dir} 中未找到任何 m3u/txt 文件！")
