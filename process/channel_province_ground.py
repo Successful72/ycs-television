@@ -21,7 +21,8 @@ PROVINCE_CHANNELS = OrderedDict([
     ("北京", [
         ("BRTV 新闻",     r"BRT\s*V\s*新\s*闻|北京\s*新\s*闻"),
         ("BRTV 纪实科教", r"BRT\s*V\s*纪\s*实|北京\s*纪\s*实|BRT\s*V\s*科\s*教"),
-        ("BRTV 卡酷少儿", r"BRT\s*V\s*卡\s*酷|北京\s*卡\s*酷|卡\s*酷\s*少\s*儿"),
+        # 新增：卡酷动画、KAKU 等别名（来源数据补充）
+        ("BRTV 卡酷少儿", r"BRT\s*V\s*卡\s*酷|北京\s*卡\s*酷|卡\s*酷\s*少\s*儿|卡\s*酷\s*动\s*画|KAKU"),
         ("BRTV 文艺",     r"BRT\s*V\s*文\s*艺|北京\s*文\s*艺"),
         ("BRTV 生活",     r"BRT\s*V\s*生\s*活|北京\s*生\s*活"),
     ]),
@@ -85,7 +86,8 @@ PROVINCE_CHANNELS = OrderedDict([
     ("江苏", [
         ("江苏城市",   r"江\s*苏\s*城\s*市"),
         ("江苏公共",   r"江\s*苏\s*公\s*共"),
-        ("江苏优漫",   r"江\s*苏\s*优\s*漫"),
+        # 新增：优漫卡通、江苏优漫卡通 等别名（来源数据补充）
+        ("江苏优漫",   r"江\s*苏\s*优\s*漫|优\s*漫\s*卡\s*通"),
         ("江苏综艺",   r"江\s*苏\s*综\s*艺"),
     ]),
 
@@ -249,24 +251,35 @@ for province, channels in PROVINCE_CHANNELS.items():
     ]
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 自然数排序：按 src-<N> 中的数字排序
+# ─────────────────────────────────────────────────────────────────────────────
+def natural_sort_key(filepath):
+    """提取文件名中 src-<N> 的数字，用于自然数排序。"""
+    basename = os.path.basename(filepath)
+    match = re.search(r"src-(\d+)", basename, re.IGNORECASE)
+    return int(match.group(1)) if match else float("inf")
+
+
 def parse_file_line_by_line(filepath: str):
     """
-    逐行读取文件的通用解析器，支持 m3u、m3u8、txt 格式
+    逐行读取文件的通用解析器，支持 m3u、m3u8、txt 格式。
+    txt 格式支持逗号或竖线分隔。
     返回 list of dict: {'name': str, 'url': str, 'extinf_line': str}
     """
     entries = []
     ext = os.path.splitext(filepath)[1].lower()
-    
+
     try:
         with open(filepath, encoding="utf-8", errors="ignore") as f:
             lines = f.readlines()
     except Exception as e:
         print(f"❌ 读取文件失败 {filepath}: {e}")
         return []
-    
+
     # 检测是否为 m3u 格式
     is_m3u_format = any(line.startswith("#EXTINF") for line in lines[:10])
-    
+
     if ext in (".m3u", ".m3u8") or is_m3u_format:
         # m3u 格式解析
         i = 0
@@ -292,23 +305,32 @@ def parse_file_line_by_line(filepath: str):
             else:
                 i += 1
     else:
-        # txt 格式解析：频道名,URL
+        # txt 格式解析，支持逗号或竖线分隔
         for line in lines:
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
-            if ',' in line:
-                parts = line.split(',', 1)
+            for sep in (',', '|'):
+                parts = line.split(sep, 1)
                 if len(parts) == 2:
                     name = parts[0].strip()
                     url = parts[1].strip()
-                    if url.startswith(('http://', 'https://', 'rtmp://', 'rtsp://', 'rtp://')):
+                    if re.match(r"https?://|rtmp://|rtsp://|rtp://", url, re.IGNORECASE):
                         entries.append({
                             'name': name,
                             'url': url,
                             'extinf_line': f'#EXTINF:-1,{name}'
                         })
+                        break
     return entries
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# URL 规范化
+# ─────────────────────────────────────────────────────────────────────────────
+def normalize_url(url: str) -> str:
+    """统一去除首尾空白和末尾斜杠，用于去重比较。"""
+    return url.strip().rstrip("/")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -352,19 +374,16 @@ def build_extinf(province, std_name):
 
 
 def main():
-    # 使用相对于工作目录的路径
     input_dir = "sources"
     output_dir = os.path.join("sources", "temp")
     output_path = os.path.join(output_dir, "省级地方频道.m3u")
-    
-    # 确保输出目录存在
+
     os.makedirs(output_dir, exist_ok=True)
-    
+
     print(f"📁 当前工作目录: {os.getcwd()}")
     print(f"📁 源文件目录: {input_dir}")
     print(f"📁 输出目录: {output_dir}")
 
-    # 检查源目录是否存在
     if not os.path.exists(input_dir):
         print(f"❌ 源目录不存在: {input_dir}")
         return
@@ -373,17 +392,19 @@ def main():
     files = []
     for pattern in ["src-*.m3u", "src-*.m3u8", "src-*.txt"]:
         files.extend(glob.glob(os.path.join(input_dir, pattern)))
-    
-    # 排除 temp 目录中的文件
+
+    # 排除 temp 目录及输出文件自身
     files = [f for f in files if not f.startswith(os.path.join(input_dir, "temp"))]
-    # 排除输出文件本身（如果存在）
     files = [f for f in files if os.path.abspath(f) != os.path.abspath(output_path)]
 
     if not files:
         print(f"⚠️  在 {input_dir} 中未找到任何 m3u/txt 文件！")
         return
 
-    print(f"\n📂 共找到 {len(files)} 个文件：")
+    # ── 按 src-<N> 自然数排序 ──
+    files.sort(key=natural_sort_key)
+
+    print(f"\n📂 共找到 {len(files)} 个文件（按自然数顺序）：")
     for f in files:
         print(f"   {os.path.basename(f)}")
 
@@ -411,14 +432,13 @@ def main():
         if result is None:
             continue
         province, std_name = result
-        url = entry['url']
+        url = normalize_url(entry['url'])
 
         if url in seen_urls:
             dup_count += 1
             continue
 
         seen_urls.add(url)
-        # 同一频道追加所有不重复的 URL
         if std_name not in province_results[province]:
             province_results[province][std_name] = []
         province_results[province][std_name].append(url)
@@ -430,19 +450,26 @@ def main():
     lines = ['#EXTM3U']
 
     total_written = 0
+    not_found = []
+
     print("📋 提取结果：")
     for province, name_url_map in province_results.items():
         if not name_url_map:
+            not_found.append(province)
             continue
         lines.append(f'\n# ── {province} ──────────────────────')
         for std_name, urls in name_url_map.items():
             extinf = build_extinf(province, std_name)
-            # 每个 URL 单独输出一条记录
             for url in urls:
                 lines.append(extinf)
                 lines.append(url)
             total_written += len(urls)
             print(f"  ✅ 【{province}】{std_name}（{len(urls)} 个源）")
+
+    if not_found:
+        print(f"\n⚠️  以下 {len(not_found)} 个省份未找到任何频道：")
+        for p in not_found:
+            print(f"   ✗ {p}")
 
     # 写入文件
     try:
