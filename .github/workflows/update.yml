@@ -42,6 +42,7 @@ jobs:
             "channel_foreign.py"
             "channel_province.py"
             "channel_province_ground.py"
+            "channel_children.py"
             "channel_hk.py"
             "channel_mo.py"
             "channel_tw.py"
